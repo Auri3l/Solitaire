@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#104829">
+  <meta name="description" content="Full-fledged Klondike Solitaire web app with procedural audio, vector cards, fluid drag-and-drop, smart hints, auto-complete, and classic bouncing victory celebration.">
+  <title>Solitaire Pro 2.0</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Solitaire Pro">
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png">
+  <link rel="stylesheet" href="styles.css">
+  <script>
+    // Offline support for the hosted web version (iPhone home-screen app). Not used inside the
+    // Android app, which already ships its files, nor on the local dev server unless ?sw=1.
+    (function () {
+      var host = location.hostname;
+      var isAndroidApp = host === 'appassets.androidplatform.net' || !!window.AndroidAds;
+      var isDev = (host === 'localhost' || host === '127.0.0.1') && !/[?&]sw=1/.test(location.search);
+      if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !isAndroidApp && !isDev) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('sw.js', { scope: './' }).catch(function () {});
+        });
+      }
+    })();
+  </script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>♠</text></svg>">
+</head>
+<body class="theme-felt-emerald">
+  <div id="app-container">
+
+    <!-- Top Header & HUD Bar -->
+    <header id="app-header">
+      <div class="brand-section">
+        <span class="logo-icon">♠</span>
+        <h1><span data-i18n="brandTitle">Solitaire</span> <span style="font-weight: 300; opacity: 0.85; font-size: 0.9em;" data-i18n="brandSubtitle">Pro</span></h1>
+        <span id="draw-mode-badge" class="mode-tag">Draw 1</span>
+      </div>
+
+      <!-- Live Gameplay Stats -->
+      <div class="hud-stats">
+        <button id="game-number" class="stat-badge game-number" type="button" title="Game number: tap to copy it or play another number" data-i18n-title="gameNumberTitle">#0</button>
+
+        <div class="stat-badge">
+          <span class="stat-label" data-i18n="score">Score</span>
+          <span id="score-value" class="stat-value">0</span>
+        </div>
+
+        <div id="vegas-container" class="stat-badge vegas-hud-badge" style="display: none;">
+          <div class="vegas-hud-cell" title="Total accumulated Vegas bankroll across games" data-i18n-title="bankrollTitle">
+            <span class="stat-label" data-i18n="bankroll">Bankroll</span>
+            <span id="vegas-balance-value" class="stat-value">$0</span>
+          </div>
+
+          <div class="vegas-hud-cell" title="Net profit/loss on this current deal" data-i18n-title="handNetTitle">
+            <span class="stat-label" data-i18n="handNet">Hand Net</span>
+            <span id="vegas-value" class="stat-value vegas-negative">-$52</span>
+          </div>
+
+          <div id="vegas-breakeven-badge" class="vegas-status-pill" title="11 cards needed to break even and reach profit">
+            <span id="vegas-breakeven-text">0/11 to Profit</span>
+          </div>
+
+          <span id="passes-badge" class="mode-tag">Pass: 1/1</span>
+
+          <div class="vegas-hud-actions">
+            <button id="btn-double-down" class="btn-vegas-action btn-vegas-double" title="Double Down: 2x Stake Bet & 2x Foundation Payouts (D)" data-i18n="doubleDown" data-i18n-title="doubleDownTitle">
+              ⚡ Double Down
+            </button>
+            <button id="btn-buy-pass" class="btn-vegas-action btn-vegas-pass" style="display: none;" title="Buy 1 Extra Deck Pass" data-i18n="buyPass" data-i18n-title="buyPassTitle">
+              🎲 Buy Pass ($20)
+            </button>
+            <div class="vegas-stake-picker" title="Vegas Bet Stake" data-i18n-title="betStakeTitle">
+              <span class="stake-label" data-i18n="bet">Bet:</span>
+              <button class="stake-chip-btn active" data-stake="1">$52</button>
+              <button class="stake-chip-btn" data-stake="2">$104</button>
+              <button class="stake-chip-btn" data-stake="5">$260</button>
+              <button class="stake-chip-btn" data-stake="10">$520</button>
+            </div>
+            <button id="btn-vegas-cashier" class="btn-vegas-action btn-cashier" title="Vegas Cashier: Reload Chips or Reset Bankroll" data-i18n="cashier" data-i18n-title="cashierTitle">
+              🏦 Cashier
+            </button>
+          </div>
+        </div>
+
+        <div class="stat-badge">
+          <span class="stat-label" data-i18n="moves">Moves</span>
+          <span id="moves-value" class="stat-value">0</span>
+        </div>
+
+        <div class="stat-badge">
+          <span class="stat-label" data-i18n="time">Time</span>
+          <span id="time-value" class="stat-value">0:00</span>
+        </div>
+      </div>
+
+      <!-- Action Buttons Bar -->
+      <div class="action-bar">
+        <button id="btn-home" class="btn-action btn-icon" type="button" title="Home screen" aria-label="Home screen" data-i18n-title="homeButtonTitle">🏠</button>
+
+        <button id="btn-new-game" class="btn-action btn-primary" type="button" title="Start a New Game (N)" data-i18n-title="newGameTitle">
+          <span data-i18n="newGame">New Game</span>
+        </button>
+
+        <button id="btn-restart" class="btn-action" type="button" title="Replay this exact deal" data-i18n-title="restartTitle">
+          <span data-i18n="restart">Restart</span>
+        </button>
+
+        <button id="btn-undo" class="btn-action" type="button" title="Undo last move (Ctrl+Z or U)" data-i18n-title="undoTitle" disabled>
+          <span data-i18n="undo">Undo</span>
+        </button>
+
+        <button id="btn-redo" class="btn-action" type="button" title="Redo move (Ctrl+Y or R)" data-i18n-title="redoTitle" disabled>
+          <span data-i18n="redo">Redo</span>
+        </button>
+
+        <button id="btn-hint" class="btn-action" type="button" title="Show best move hint (H)" data-i18n-title="hintTitle">
+          <span data-i18n="hint">💡 Hint</span>
+        </button>
+
+        <button id="btn-auto-complete" class="btn-action btn-auto-complete" type="button" title="Auto-complete game (A)" data-i18n-title="autoCompleteTitle" disabled>
+          <span data-i18n="autoComplete">✨ Auto Complete</span>
+        </button>
+
+        <button id="btn-sound" class="btn-action btn-icon" type="button" title="Toggle Sound (M)" aria-label="Toggle Sound" data-i18n-title="soundTitle">
+          🔊
+        </button>
+
+        <button id="btn-settings" class="btn-action btn-icon" type="button" title="Settings" aria-label="Settings" data-i18n-title="settingsTitle">
+          ⚙️
+        </button>
+
+        <button id="btn-stats" class="btn-action btn-icon" type="button" title="Statistics" aria-label="Statistics" data-i18n-title="statsTitle">
+          📊
+        </button>
+
+        <button id="btn-leaderboard" class="btn-action btn-icon" type="button" title="High Scores & Leaderboards" aria-label="High Scores & Leaderboards" data-i18n-title="leaderboardTitle">
+          🏆
+        </button>
+
+        <button id="btn-rules" class="btn-action btn-icon" type="button" title="How To Play" aria-label="How To Play" data-i18n-title="rulesTitle">
+          ❓
+        </button>
+      </div>
+    </header>
+
+    <button id="btn-auto-complete-fab" class="auto-complete-fab" type="button" title="Auto-complete game (A)" data-i18n-title="autoCompleteTitle">
+      <span data-i18n="autoComplete">✨ Auto Complete</span>
+    </button>
+
+    <!-- Main Playing Field -->
+    <main id="solitaire-board">
+      <!-- Upper Section: Stock & Waste on left, Foundations on right -->
+      <section class="top-piles-row">
+        <div class="stock-waste-group">
+          <div id="stock-container" class="slot" title="Stock pile - click to draw or recycle"></div>
+          <div id="waste-container" class="slot" title="Waste pile"></div>
+        </div>
+
+        <div id="foundations-container" class="foundations-group" title="Foundation piles (Hearts, Diamonds, Clubs, Spades)">
+          <!-- Generated dynamically by Renderer -->
+        </div>
+      </section>
+
+      <!-- Lower Section: 7 Tableau Columns -->
+      <section id="tableau-container" class="tableau-row" title="Tableau columns">
+        <!-- Generated dynamically by Renderer -->
+      </section>
+    </main>
+
+    <!-- Toast Notification for Hints and Alerts -->
+    <div id="hint-toast">
+      <span style="font-size: 1.2rem;">💡</span>
+      <span id="hint-text">Move card to foundation</span>
+    </div>
+
+
+  </div>
+
+  <!-- Victory Celebration Fullscreen Canvas (Classic Windows Cascade) -->
+  <canvas id="victory-canvas"></canvas>
+
+  <!-- Modal Backdrop for Dialogs -->
+  <!-- Home Screen (shown on launch and from the header's home button) -->
+  <div id="home-screen" class="home-screen" style="display: none;">
+    <div class="home-inner">
+      <div class="home-top">
+        <div class="home-brand">
+          <img src="icons/icon-192.png" alt="" class="home-logo">
+          <h1><span data-i18n="brandTitle">Solitaire</span> <span class="home-brand-sub" data-i18n="brandSubtitle">Pro</span></h1>
+        </div>
+        <div class="home-lang" role="group" aria-label="Language">
+          <button type="button" class="home-lang-btn" data-lang="tr">TR</button>
+          <button type="button" class="home-lang-btn" data-lang="en">EN</button>
+        </div>
+      </div>
+
+      <div class="home-modes">
+        <button type="button" id="home-continue" class="home-btn home-btn-continue">
+          <span class="home-btn-title" data-i18n="homeContinue">▶ Continue</span>
+          <span class="home-btn-desc" id="home-continue-desc"></span>
+        </button>
+        <button type="button" class="home-btn" data-mode="standard-1">
+          <span class="home-btn-title" data-i18n="homeKlondike1">Klondike · Draw 1</span>
+          <span class="home-btn-desc" data-i18n="homeKlondike1Desc">Classic, one card at a time</span>
+        </button>
+        <button type="button" class="home-btn" data-mode="standard-3">
+          <span class="home-btn-title" data-i18n="homeKlondike3">Klondike · Draw 3</span>
+          <span class="home-btn-desc" data-i18n="homeKlondike3Desc">Harder, three cards at a time</span>
+        </button>
+        <button type="button" class="home-btn home-btn-vegas" data-mode="vegas">
+          <span class="home-btn-title" data-i18n="homeVegas">💰 Vegas</span>
+          <span class="home-btn-desc" id="home-vegas-desc"></span>
+        </button>
+      </div>
+
+      <div class="home-secondary">
+        <button type="button" id="home-number" class="home-small-btn"><span class="home-small-icon">#</span><span data-i18n="homeGameNumber">Game no.</span></button>
+        <button type="button" id="home-stats" class="home-small-btn"><span class="home-small-icon">📊</span><span data-i18n="homeStats">Stats</span></button>
+        <button type="button" id="home-settings" class="home-small-btn"><span class="home-small-icon">⚙️</span><span data-i18n="homeSettings">Settings</span></button>
+        <button type="button" id="home-leaderboard" class="home-small-btn"><span class="home-small-icon">🏆</span><span data-i18n="homeLeaderboard">Scores</span></button>
+        <button type="button" id="home-rules" class="home-small-btn"><span class="home-small-icon">❓</span><span data-i18n="homeRules">How to play</span></button>
+        <button type="button" id="home-remove-ads" class="home-small-btn" style="display: none;"><span class="home-small-icon">🚫</span><span data-i18n="homeRemoveAds">No ads</span></button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-backdrop">
+
+    <!-- New Game Modal -->
+    <div id="modal-new-game" class="modal" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <h2 data-i18n="modalNewGameHeader">Start New Game</h2>
+        <button class="modal-close" type="button" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="margin-bottom: 20px; color: #cbd5e1;" data-i18n="newGamePrompt">Select the type of deal you want to play:</p>
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+          <button id="btn-start-solvable" class="btn-action btn-primary" style="justify-content: center; padding: 14px; font-size: 1rem;" data-i18n="btnSolvable">
+            🌟 Solvable Deal (Guaranteed Winnable)
+          </button>
+          <button id="btn-start-random" class="btn-action" style="justify-content: center; padding: 14px; font-size: 1rem;" data-i18n="btnRandom">
+            🎲 Classic Random Deal
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="modal-settings" class="modal" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <h2 data-i18n="modalSettingsHeader">Game Settings</h2>
+        <button class="modal-close" type="button" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="setting-row" id="row-remove-ads" style="display: none;">
+          <div class="setting-info">
+            <span class="setting-title" data-i18n="setRemoveAdsTitle">Remove Ads</span>
+            <span class="setting-desc" id="remove-ads-desc" data-i18n="setRemoveAdsDesc">One-time purchase: no banner and no ads between games</span>
+          </div>
+          <div class="setting-control" style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;">
+            <button id="btn-remove-ads" class="btn-action btn-primary">Remove Ads</button>
+            <button id="btn-restore-purchases" class="btn-action" data-i18n="btnRestorePurchase">Restore</button>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-title" data-i18n="setLanguageTitle">Language</span>
+            <span class="setting-desc" data-i18n="setLanguageDesc">Choose user interface language</span>
+          </div>
+          <div class="setting-control">
+            <select id="settings-language">
+              <option value="en">English</option>
+              <option value="tr">Türkçe</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-title" data-i18n="setThemeTitle">Table Theme</span>
+            <span class="setting-desc" data-i18n="setThemeDesc">Choose tabletop felt color and atmosphere</span>
+          </div>
+          <div class="setting-control">
+            <select id="settings-theme">
+              <option value="felt-emerald" data-i18n="optEmerald">Emerald Felt</option>
+              <option value="midnight" data-i18n="optMidnight">Midnight Velvet</option>
+              <option value="crimson" data-i18n="optCrimson">Royal Crimson</option>
+              <option value="obsidian" data-i18n="optObsidian">Obsidian Dark</option>
+              <option value="wood" data-i18n="optWood">Warm Mahogany</option>
+              <option value="teal" data-i18n="optTeal">Ocean Teal</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-title" data-i18n="setCardBackTitle">Card Back Design</span>
+            <span class="setting-desc" data-i18n="setCardBackDesc">Style of card backs</span>
+          </div>
+          <div class="setting-control">
+            <select id="settings-card-back">
+              <option value="classic" data-i18n="optClassicBack">Classic Geometric</option>
+              <option value="filigree" data-i18n="optFiligreeBack">Royal Filigree</option>
+              <option value="celtic" data-i18n="optCelticBack">Emerald Celtic</option>
+              <option value="neon" data-i18n="optNeonBack">Cyber Neon</option>
+              <option value="gradient" data-i18n="optGradientBack">Modern Gradient</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-title" data-i18n="setCardSizeTitle">Card Size</span>
+            <span class="setting-desc" data-i18n="setCardSizeDesc">Scale cards for your computer screen</span>
+          </div>
+          <div class="setting-control">
+            <select id="settings-card-size">
+              <option value="auto" data-i18n="optCardAuto">Auto (Responsive)</option>
+              <option value="normal" data-i18n="optCardNormal">Medium (Comfortable)</option>
+              <option value="large" data-i18n="optCardLarge">Large (High Visibility)</option>
+              <option value="xlarge" data-i18n="optCardXLarge">Extra Large (Maximum Size)</option>
+              <option value="compact" data-i18n="optCardCompact">Compact (Classic Small)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-title" data-i18n="setDrawModeTitle">Draw Mode</span>
+            <span class="setting-desc" data-i18n="setDrawModeDesc">Number of cards drawn from stock</span>
+          </div>
+          <div class="setting-control">
+            <select id="settings-draw-mode">
+              <option value="1" data-i18n="optDraw1">Draw 1 (Turn 1)</option>
+              <option value="3" data-i18n="optDraw3">Draw 3 (Turn 3)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-title" data-i18n="setScoringTitle">Scoring System</span>
+            <span class="setting-desc" data-i18n="setScoringDesc">Scoring rules applied</span>
+          </div>
+          <div class="setting-control">
+            <select id="settings-scoring">
+              <option value="standard" data-i18n="optScoreStandard">Standard Klondike</option>
+              <option value="vegas" data-i18n="optScoreVegas">Vegas Rules</option>
+              <option value="none" data-i18n="optScoreNone">Casual (No Score)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="setting-row" id="row-vegas-cumulative">
+          <div class="setting-info">
+            <span class="setting-title" data-i18n="setVegasBankrollTitle">Vegas Bankroll Mode</span>
+            <span class="setting-desc" data-i18n="setVegasBankrollDesc">Persistent bankroll across games vs standalone deals</span>
+          </div>
+          <div class="setting-control">
+            <select id="settings-vegas-cumulative">
+              <option value="true" data-i18n="optVegasCumulative">Cumulative (Persistent Bankroll)</option>
+              <option value="false" data-i18n="optVegasStandalone">Standalone ($52 Buy-in Each Game)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="setting-row" id="row-vegas-stake">
+          <div class="setting-info">
+            <span class="setting-title" data-i18n="setVegasStakeTitle">Vegas Default Stake</span>
+            <span class="setting-desc" data-i18n="setVegasStakeDesc">Initial wager and foundation payout scaling</span>
+          </div>
+          <div class="setting-control">
+            <select id="settings-vegas-stake">
+              <option value="1" data-i18n="optStake1">Standard (1x: $52 Bet / $5 Card)</option>
+              <option value="2" data-i18n="optStake2">High Roller (2x: $104 Bet / $10 Card)</option>
+              <option value="5" data-i18n="optStake5">VIP Whale (5x: $260 Bet / $25 Card)</option>
+              <option value="10" data-i18n="optStake10">High Stakes (10x: $520 Bet / $50 Card)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-title" data-i18n="setDealTypeTitle">Default Deal Type</span>
+            <span class="setting-desc" data-i18n="setDealTypeDesc">Winnable seeds or pure random</span>
+          </div>
+          <div class="setting-control">
+            <select id="settings-deal-type">
+              <option value="solvable" data-i18n="optDealSolvable">Solvable Deals</option>
+              <option value="random" data-i18n="optDealRandom">Random Deals</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-title" data-i18n="setSoundTitle">Sound Effects</span>
+            <span class="setting-desc" data-i18n="setSoundDesc">Procedural card audio synthesis</span>
+          </div>
+          <div class="setting-control">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="checkbox" id="settings-sound-enabled" style="width: 18px; height: 18px; cursor: pointer;">
+              <span data-i18n="enabled">Enabled</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-title" data-i18n="setVolumeTitle">Audio Volume</span>
+            <span class="setting-desc" data-i18n="setVolumeDesc">Adjust sound effects level</span>
+          </div>
+          <div class="setting-control">
+            <input type="range" id="settings-sound-volume" min="0" max="100" value="60">
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-title" data-i18n="setHapticsTitle">Haptic Feedback</span>
+            <span class="setting-desc" data-i18n="setHapticsDesc">Vibration on card moves and interactions</span>
+          </div>
+          <div class="setting-control">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="checkbox" id="settings-haptics-enabled" style="width: 18px; height: 18px; cursor: pointer;">
+              <span data-i18n="enabled">Enabled</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="setting-row" id="row-privacy-options" style="display: none;">
+          <div class="setting-info">
+            <span class="setting-title" data-i18n="setPrivacyTitle">Privacy &amp; Ad Choices</span>
+            <span class="setting-desc" data-i18n="setPrivacyDesc">Review how ads use your data</span>
+          </div>
+          <div class="setting-control">
+            <button id="btn-privacy-options" class="btn-action" data-i18n="btnPrivacyOptions">Manage</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-action btn-modal-close" data-i18n="btnCancel">Cancel</button>
+        <button id="btn-save-settings" class="btn-action btn-primary" data-i18n="btnSaveSettings">Save Changes</button>
+      </div>
+    </div>
+
+    <!-- Statistics Modal -->
+    <div id="modal-stats" class="modal" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <h2 data-i18n="modalStatsHeader">Game Statistics</h2>
+        <button class="modal-close" type="button" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="stats-tabs">
+          <button class="stats-tab-btn active" data-mode="standard-1" data-i18n="tabStandard1">Standard (Draw 1)</button>
+          <button class="stats-tab-btn" data-mode="standard-3" data-i18n="tabStandard3">Standard (Draw 3)</button>
+          <button class="stats-tab-btn" data-mode="vegas-1" data-i18n="tabVegas1">Vegas (Draw 1)</button>
+          <button class="stats-tab-btn" data-mode="vegas-3" data-i18n="tabVegas3">Vegas (Draw 3)</button>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card">
+            <span class="stat-card-label" data-i18n="statGamesPlayed">Games Played</span>
+            <span id="stat-played" class="stat-card-value">0</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card-label" data-i18n="statGamesWon">Games Won</span>
+            <span id="stat-won" class="stat-card-value">0</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card-label" data-i18n="statWinRate">Win Rate</span>
+            <span id="stat-win-rate" class="stat-card-value">0%</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card-label" data-i18n="statCurrentStreak">Current Streak</span>
+            <span id="stat-current-streak" class="stat-card-value">0</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card-label" data-i18n="statBestStreak">Best Streak</span>
+            <span id="stat-best-streak" class="stat-card-value">0</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card-label" data-i18n="statBestTime">Best Time</span>
+            <span id="stat-best-time" class="stat-card-value">--</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card-label" data-i18n="statBestScore">Highest Score</span>
+            <span id="stat-best-score" class="stat-card-value">--</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card-label" data-i18n="statFewestMoves">Fewest Moves</span>
+            <span id="stat-fewest-moves" class="stat-card-value">--</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-stats-goto-leaderboard" class="btn-action" data-i18n="statViewLeaderboard">🏆 View Leaderboards</button>
+        <button id="btn-reset-stats" class="btn-action" style="color: #f87171;" data-i18n="btnResetStats">Reset Statistics</button>
+        <button class="btn-action btn-modal-close btn-primary" data-i18n="btnClose">Close</button>
+      </div>
+    </div>
+
+    <!-- Rules / How To Play Modal -->
+    <div id="modal-rules" class="modal" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <h2 data-i18n="modalRulesHeader">How To Play Solitaire</h2>
+        <button class="modal-close" type="button" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body rules-content">
+        <h3 data-i18n="rulesObjectiveHeading">Objective</h3>
+        <p data-i18n="rulesObjectiveText">The goal is to move all 52 cards into the four Foundation piles at the top right, sorted by suit from Ace up to King (A, 2, 3, 4, 5, 6, 7, 8, 9, 10, J, Q, K).</p>
+
+        <h3 data-i18n="rulesTableauHeading">Tableau Building</h3>
+        <ul>
+          <li data-i18n="rulesTableau1">Cards in the 7 tableau columns must be stacked in descending numerical rank with alternating colors (e.g., Red 6 on Black 7).</li>
+          <li data-i18n="rulesTableau2">You can move single cards or whole descending alternating sequences together.</li>
+          <li data-i18n="rulesTableau3">Empty tableau columns can only be filled with a King (or a stack headed by a King).</li>
+          <li data-i18n="rulesTableau4">When you uncover a face-down card, click it or move the card above it to flip it face up.</li>
+        </ul>
+
+        <h3 data-i18n="rulesStockHeading">Stock and Waste</h3>
+        <ul>
+          <li data-i18n="rulesStock1">Click the Stock pile on the top left to draw cards into the Waste pile.</li>
+          <li data-i18n="rulesStock2">When the Stock is empty, click the empty slot to recycle the Waste pile back into Stock.</li>
+        </ul>
+
+        <h3 data-i18n="rulesControlsHeading">Controls</h3>
+        <ul>
+          <li data-i18n="rulesControls1">Drag & Drop: Drag any face-up card or stack to valid destination.</li>
+          <li data-i18n="rulesControls2">Click / Tap: Single click any face-up card to auto-move it to the best legal slot (Foundation first, then Tableau).</li>
+          <li data-i18n="rulesControls3">Auto-Complete: When all face-down cards are uncovered and stock/waste are clear, click the glowing "Auto Complete" button to finish the game automatically!</li>
+        </ul>
+
+        <h3 data-i18n="rulesVegasHeading">🎰 Vegas Solitaire Rules & Risk-Reward</h3>
+        <ul>
+          <li data-i18n="rulesVegas1">The Buy-in & Goal: You wager $52 to buy the deck (-$52). Each card moved to the Foundation pays out +$5.</li>
+          <li data-i18n="rulesVegas2">Break-Even at 11 Cards: Getting 11 cards into the Foundations yields $55, breaking even and putting you into net profit! Every additional card is pure reward.</li>
+          <li data-i18n="rulesVegas3">Pass Limits: Draw 1 allows 1 pass through the deck (0 recycles). Draw 3 allows 3 passes (2 recycles).</li>
+          <li data-i18n="rulesVegas4">⚡ Double Down: Before scoring cards to foundation, click Double Down (or press D) to double your wager and double all payouts ($10 per card). High risk, high reward!</li>
+          <li data-i18n="rulesVegas5">🎲 Buy Extra Pass: Ran out of passes? Pay the extra pass fee ($20) to buy one more pass through the deck to hunt down that missing card.</li>
+          <li data-i18n="rulesVegas6">🏆 Clearance Jackpot: Clear all 52 cards to earn the +$100 Clearance Jackpot!</li>
+          <li data-i18n="rulesVegas7">🏦 Bankroll: Bets come out of your persistent bankroll. Out of chips? Visit the Cashier for free daily chips or more chips.</li>
+        </ul>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-action btn-modal-close btn-primary" data-i18n="btnGotIt">Got it!</button>
+      </div>
+    </div>
+
+    <!-- Keyboard Shortcuts Modal -->
+    <div id="modal-shortcuts" class="modal" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <h2 data-i18n="modalShortcutsHeader">Keyboard Shortcuts</h2>
+        <button class="modal-close" type="button" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="shortcuts-list">
+          <div class="shortcut-item">
+            <span data-i18n="shortcutUndo">Undo Move</span>
+            <span><kbd>Ctrl+Z</kbd> or <kbd>U</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span data-i18n="shortcutRedo">Redo Move</span>
+            <span><kbd>Ctrl+Y</kbd> or <kbd>R</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span data-i18n="shortcutHint">Show Hint</span>
+            <span><kbd>H</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span data-i18n="shortcutStock">Draw from Stock</span>
+            <span><kbd>Space</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span data-i18n="shortcutNewGame">New Game</span>
+            <span><kbd>N</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span data-i18n="shortcutAutoComplete">Auto-Complete</span>
+            <span><kbd>A</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span data-i18n="shortcutDoubleDown">Double Down (Vegas)</span>
+            <span><kbd>D</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span data-i18n="shortcutToggleSound">Toggle Sound</span>
+            <span><kbd>M</kbd></span>
+          </div>
+          <div class="shortcut-item">
+            <span data-i18n="shortcutCloseModal">Close Modal</span>
+            <span><kbd>Esc</kbd></span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-action btn-modal-close btn-primary" data-i18n="btnClose">Close</button>
+      </div>
+    </div>
+
+    <!-- High Scores & Leaderboard Modal -->
+    <div id="modal-leaderboard" class="modal" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <h2>🏆 <span data-i18n="modalLeaderboardHeader">High Scores & Leaderboards</span></h2>
+        <button class="modal-close" type="button" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- Google Play Games Connection Bar -->
+        <div id="gpg-card" class="gpg-card">
+          <div class="gpg-card-header">
+            <div class="gpg-badge-icon">🎮</div>
+            <div class="gpg-info">
+              <div class="gpg-title-row">
+                <span class="gpg-service-name">Google Play Games</span>
+                <span id="gpg-status-pill" class="gpg-status-pill disconnected">Offline</span>
+              </div>
+              <p class="gpg-desc" id="gpg-desc" data-i18n="gpgPrompt">Connect with Google Play Games to sync your scores across devices and compete on global weekly & monthly leaderboards.</p>
+            </div>
+          </div>
+          <div class="gpg-profile-row" id="gpg-profile-row" style="display: none;">
+            <div class="gpg-avatar" id="gpg-avatar">🎮</div>
+            <div class="gpg-player-meta">
+              <div class="gpg-gamertag" id="gpg-gamertag">PlayGamer#2026</div>
+              <div class="gpg-level" id="gpg-level">Google Play • Lv. 12</div>
+            </div>
+            <div class="gpg-profile-btns">
+              <button id="btn-gpg-sync" class="btn-gpg-action" data-i18n="gpgSyncNow">☁️ Sync Now</button>
+            </div>
+          </div>
+          <div class="gpg-action-row" id="gpg-connect-row">
+            <button id="btn-gpg-connect" class="btn-gpg-connect" data-i18n="gpgConnect">
+              🎮 Connect with Google Play Games
+            </button>
+          </div>
+        </div>
+
+        <!-- Timeframe Tabs (Weekly, Monthly, All-Time) -->
+        <div class="leaderboard-tabs">
+          <button class="lb-time-btn active" data-timeframe="weekly" data-i18n="tabWeekly">📅 Weekly Top</button>
+          <button class="lb-time-btn" data-timeframe="monthly" data-i18n="tabMonthly">🗓️ Monthly Top</button>
+          <button class="lb-time-btn" data-timeframe="all_time" data-i18n="tabAllTime">👑 All-Time Top</button>
+        </div>
+
+        <!-- Mode Filter Chips -->
+        <div class="leaderboard-filters">
+          <button class="lb-filter-chip active" data-mode="all" data-i18n="filterAll">All Modes</button>
+          <button class="lb-filter-chip" data-mode="standard-1" data-i18n="filterStandard1">Standard (1)</button>
+          <button class="lb-filter-chip" data-mode="standard-3" data-i18n="filterStandard3">Standard (3)</button>
+          <button class="lb-filter-chip" data-mode="vegas-1" data-i18n="filterVegas1">Vegas (1)</button>
+          <button class="lb-filter-chip" data-mode="vegas-3" data-i18n="filterVegas3">Vegas (3)</button>
+        </div>
+
+        <!-- Leaderboard Score List -->
+        <div class="leaderboard-table-container">
+          <table class="leaderboard-table">
+            <thead>
+              <tr>
+                <th class="col-rank" data-i18n="rankHeader">#</th>
+                <th class="col-player" data-i18n="playerHeader">Player</th>
+                <th class="col-mode" data-i18n="modeHeader">Mode</th>
+                <th class="col-score" data-i18n="scoreHeader">Score</th>
+                <th class="col-time" data-i18n="timeHeader">Time</th>
+                <th class="col-moves" data-i18n="movesHeader">Moves</th>
+              </tr>
+            </thead>
+            <tbody id="leaderboard-tbody">
+              <!-- Populated dynamically -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Player Best Standing Ribbon -->
+        <div class="lb-player-banner" id="lb-player-banner">
+          <span id="lb-player-standing-text">Your Best Standing: #1 (850 pts)</span>
+          <button id="btn-lb-change-name" class="btn-lb-sub" data-i18n="btnChangeName">✏️ Change Name</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-open-gpg-overlay" class="btn-action" data-i18n="gpgOpenLeaderboard">Open in Play Games</button>
+        <button class="btn-action btn-modal-close btn-primary" data-i18n="btnClose">Close</button>
+      </div>
+    </div>
+
+    <!-- Vegas Cashier Modal -->
+    <div id="modal-cashier" class="modal" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <h2 data-i18n="modalCashierHeader">🎰 Vegas Cashier</h2>
+        <button class="modal-close" type="button" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="cashier-prompt" style="margin-bottom: 16px; color: #cbd5e1;">Manage your Solitaire Vegas bankroll and chips:</p>
+        <div class="cashier-card">
+          <span class="cashier-label" data-i18n="cashierBalanceLabel">Current Bankroll</span>
+          <span id="cashier-balance-display" class="cashier-amount">$500</span>
+        </div>
+        <div class="cashier-actions" style="display: flex; flex-direction: column; gap: 12px; margin-top: 18px;">
+          <button id="btn-cashier-reload" class="btn-action btn-primary" style="justify-content: center; padding: 12px; font-size: 0.95rem;" data-i18n="btnReloadChips">
+            💵 Reload +$500 Chips
+          </button>
+          <button id="btn-cashier-reset" class="btn-action" style="justify-content: center; padding: 12px;" data-i18n="btnDailyChips">
+            🎁 Free Daily Chips: Refill to $500
+          </button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-action btn-modal-close btn-primary" data-i18n="btnDone">Done</button>
+      </div>
+    </div>
+
+    <!-- Victory Modal -->
+    <div id="modal-victory" class="modal" role="dialog" aria-modal="true">
+      <div class="modal-body victory-celebration-box">
+        <div class="victory-trophy">🏆</div>
+        <h2 data-i18n="victoryHeading">Congratulations! You Won!</h2>
+        <div class="victory-stats-summary">
+          <div class="v-stat">
+            <span class="v-label" data-i18n="victoryTime">Time</span>
+            <span id="victory-time" class="v-val">0:00</span>
+          </div>
+          <div class="v-stat">
+            <span class="v-label" data-i18n="victoryMoves">Moves</span>
+            <span id="victory-moves" class="v-val">0</span>
+          </div>
+          <div class="v-stat">
+            <span class="v-label" data-i18n="victoryScore">Final Score</span>
+            <span id="victory-score" class="v-val">0</span>
+          </div>
+        </div>
+
+        <!-- High Score / Leaderboard Achievement Banner -->
+        <div id="victory-high-score-card" class="victory-high-score-card" style="display: none;">
+          <div class="v-hs-badge" data-i18n="victoryHighScoreBanner">🌟 NEW HIGH SCORE RECORD!</div>
+          <div class="v-hs-text" id="victory-high-score-text">Ranked #2 on the Weekly Leaderboard!</div>
+          <button id="btn-victory-view-leaderboard" class="btn-action btn-sm" style="margin-top: 10px;" data-i18n="btnViewLeaderboard">🏆 Leaderboards</button>
+        </div>
+
+        <!-- Vegas Settlement Receipt (Visible in Vegas Mode) -->
+        <div id="vegas-victory-receipt" class="vegas-settlement-card" style="display: none;">
+          <div class="settlement-title" data-i18n="victoryVegasReceipt">🏆 VEGAS PAYOUT SETTLEMENT</div>
+          <div class="settlement-row">
+            <span data-i18n="victoryBuyIn">Buy-in Stake:</span>
+            <span id="v-rec-buyin">-$52</span>
+          </div>
+          <div class="settlement-row">
+            <span data-i18n="victoryReturns">Foundation Returns (52 × payout):</span>
+            <span id="v-rec-payout" class="vegas-positive">+$260</span>
+          </div>
+          <div class="settlement-row">
+            <span data-i18n="victoryJackpot">Clearance Jackpot Bonus:</span>
+            <span id="v-rec-jackpot" style="color: #ffd700;">+$100</span>
+          </div>
+          <div class="settlement-row" id="v-rec-passes-row" style="display: none;">
+            <span data-i18n="victoryExtraPasses">Extra Passes Purchased:</span>
+            <span id="v-rec-passes" class="vegas-negative">-$0</span>
+          </div>
+          <div class="settlement-divider"></div>
+          <div class="settlement-row settlement-total">
+            <span data-i18n="victoryNetProfit">Net Hand Profit:</span>
+            <span id="v-rec-net" class="vegas-positive">+$308</span>
+          </div>
+          <div class="settlement-row">
+            <span data-i18n="victoryUpdatedBankroll">Updated Bankroll:</span>
+            <span id="v-rec-bankroll" class="vegas-positive">$808</span>
+          </div>
+        </div>
+
+        <p style="color: #94a3b8; font-size: 0.9rem; margin-bottom: 24px;" data-i18n="victoryPrompt">Click the screen to enjoy the classic card bounce celebration, or play another hand!</p>
+        <button id="btn-play-again" class="btn-action btn-primary" style="padding: 14px 28px; font-size: 1.1rem; border-radius: 30px;" data-i18n="btnPlayAgain">
+          🎮 Play Another Game
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+  <script type="module" src="src/ui/app.js"></script>
+</body>
+</html>
